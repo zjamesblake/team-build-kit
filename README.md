@@ -8,9 +8,21 @@ You don't need to know how any of it works under the hood. The skills carry the 
 
 ---
 
-## Install (5 minutes, no coding)
+## Quick install (already using Claude Code?)
 
-1. **Download this folder** — click `Code ▸ Download ZIP` above, unzip it, and put it somewhere sensible (your Desktop is fine). *(Or, if you know git: `git clone` it — that makes updates one command later.)*
+You don't need to download anything. Paste this one line into Claude Code (or a terminal) — it installs the commands straight into Claude Code:
+
+```
+curl -fsSL https://raw.githubusercontent.com/zjamesblake/team-build-kit/main/install.sh | bash
+```
+
+Then type **`/new-workspace`** to begin. To update later, run **`/update-build-kit`**.
+
+---
+
+## Full setup (5 minutes — for first-time Claude Code users)
+
+1. **Download this folder** — click `Code ▸ Download ZIP` above, unzip it, and put it somewhere sensible (your Desktop is fine).
 2. **Open it in VS Code** — `File ▸ Open Folder`, pick this folder.
 3. **Open the Claude Code panel** and type **`get started`**.
 

@@ -30,15 +30,24 @@ The kit lives at a public GitHub repo. This skill pulls the current files straig
 Tell the user: *"Pulling the latest Team Build Kit and re-installing the skills — this won't touch any of your own work."* Then run:
 
 ```bash
-set -e
 BASE="https://raw.githubusercontent.com/zjamesblake/team-build-kit/main/.skills"
+TMP=$(mktemp -d); ok=1
+# 1) download EVERYTHING to a temp dir first — touch nothing installed yet
 for s in new-workspace memo prd build ship quick-fix update-build-kit; do
-  mkdir -p ~/.claude/skills/"$s"
-  curl -fsSL "$BASE/$s/SKILL.md" -o ~/.claude/skills/"$s"/SKILL.md
+  mkdir -p "$TMP/$s"; curl -fsSL "$BASE/$s/SKILL.md" -o "$TMP/$s/SKILL.md" || ok=0
 done
-mkdir -p ~/.claude/skills/_shared
-curl -fsSL "$BASE/_shared/documentation_standard.md" -o ~/.claude/skills/_shared/documentation_standard.md
-echo "Updated:"; ls -1 ~/.claude/skills/{new-workspace,memo,prd,build,ship,quick-fix,update-build-kit}/SKILL.md ~/.claude/skills/_shared/documentation_standard.md
+mkdir -p "$TMP/_shared"; curl -fsSL "$BASE/_shared/documentation_standard.md" -o "$TMP/_shared/documentation_standard.md" || ok=0
+# 2) only install if ALL 8 files downloaded cleanly (atomic — never leave a half-updated kit)
+count=$(find "$TMP" -name '*.md' | wc -l | tr -d ' ')
+if [ "$ok" = 1 ] && [ "$count" = 8 ]; then
+  for s in new-workspace memo prd build ship quick-fix update-build-kit; do
+    mkdir -p ~/.claude/skills/"$s"; cp "$TMP/$s/SKILL.md" ~/.claude/skills/"$s"/SKILL.md
+  done
+  mkdir -p ~/.claude/skills/_shared; cp "$TMP/_shared/documentation_standard.md" ~/.claude/skills/_shared/documentation_standard.md
+  rm -rf "$TMP"; echo "Updated all 8 files."
+else
+  rm -rf "$TMP"; echo "Update FAILED ($count/8 downloaded). Your existing kit is UNTOUCHED — nothing was changed. Check your connection and try again, or re-download the repo."; exit 1
+fi
 ```
 
 > If the user also has the repo cloned locally and prefers git: `cd` into it, `git pull`, then re-run the install command from the kit's `CLAUDE.md`. The curl path above is the default because it needs no clone.

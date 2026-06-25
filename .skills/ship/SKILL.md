@@ -1,0 +1,153 @@
+---
+name: ship
+description: Gate 3 — "others can rely on it." The resilience review a build must clear before it goes live, triggered when the blast radius crosses the line (someone else depends on it, it writes/changes real data, its output is relied on for important decisions, or it touches money / outside parties / business-critical truth). Surfaces what breaks / who notices / fallback / contingency / how-we-fix, dispositions every hole (fix / escalate / accept), then takes the build live and closes the project. Invoked by /build when the router fires.
+---
+
+# /ship
+
+**Definition of done:** Ship proves a build is safe for **others to rely on** before it goes live, then takes it live and closes the project. It is **Gate 3** — and it only triggers when the blast radius is real. The build already works (that's `/build`); ship answers a different question: *when this runs in production and something goes wrong, what happens?* If you can't answer what breaks, who notices, the fallback, the contingency, and how we fix it — it does not go live.
+
+**This is the human review gate.** For your own builds, it's a deliberate self-review before exposing something real. For the team, this is the point where they bring the build to you — the resilience review is exactly the judgment a non-technical builder can't self-administer. **The written review is the audit surface:** it's what lets you (or a fresh session) verify the gate was cleared honestly, not rubber-stamped.
+
+## Trigger
+
+`/build` routes here when **any** blast-radius condition fires:
+- **Someone other than you depends on it**, or
+- **It writes or changes real data**, or
+- **Its output is relied on to make important decisions** (accuracy carries weight even if it persists nothing — a report, an analysis, a number someone acts on), or
+- **It touches money / outside parties / business-critical truth.**
+
+If none fire, there is no `/ship` — `/build` ships freely and closes the project itself. Ceremony proportional to risk.
+
+## Usage
+
+```
+/ship [project name]
+/ship auto-categorizer
+```
+
+## When to Use
+
+- `/build` finished, verified, and its blast-radius router fired
+- Before any build with real blast radius goes live or is exposed to others
+
+## When NOT to Use
+
+- The router is clean (internal, reversible, no real data) — `/build` handles close
+- The build isn't verified yet (finish `/build` Phase 3 first)
+- Nothing has been built (use `/memo` → `/prd` → `/build`)
+
+## Prerequisite
+
+A `/build` that passed end-of-build verification, with a `project_log.md` recording the router result. Read the PRD's pre-mortem and impact map before starting — this review builds on them.
+
+---
+
+## Phase 1: NAME THE BLAST RADIUS
+
+State exactly which router condition(s) fire and **who/what is exposed**:
+- Who depends on this, and on what exactly?
+- What real data does it write or change?
+- What money / outside party / business-critical truth does it touch?
+
+This sets the depth of the review. A tool that moves real money gets a harder look than one that writes an internal note someone reads.
+
+---
+
+## Phase 2: RESILIENCE REVIEW (the Gate-3 content)
+
+Answer all five in writing. This is the heart of the gate — reuse the CLAUDE.md Workflow Design Standard quality lens.
+
+| Question | What to answer |
+|----------|----------------|
+| **What breaks?** | Every failure mode. For every handoff: what if the next step never fires — how long until someone notices? For every write: what happens if it runs twice? (idempotency) |
+| **Who notices?** | For each failure: does someone get notified (owner + specific next action), or does it fail silently? Where is the source of truth, and can it drift? |
+| **What's the fallback?** | For each automated step that fails: is there a manual path forward? For each human step: is a system sitting idle waiting, and does anyone know? |
+| **What's the contingency?** | If it goes wrong in production: what's the rollback or kill switch? Can we undo go-live in one step? |
+| **How do we fix it?** | The recovery procedure, written down concretely — so the person on the hook at 2am can follow it. |
+
+Every answer of "I don't know" or "nothing" where there should be something is a **hole**. Holes are not noted and moved past — they go to Phase 3 for disposition.
+
+---
+
+## Phase 3: DISPOSITION (what we actually do about the holes)
+
+Finding holes is worthless if nothing happens to them. **Every hole from Phase 2 gets exactly one disposition before go-live:**
+
+| Disposition | When it applies | Action |
+|-------------|-----------------|--------|
+| **Fix now** | The hole is a *missing safeguard* you can build in this scope — no failure alert, no idempotency guard, no retry, no manual-fallback path | Build the safeguard, then re-run that resilience question. Go-live stays blocked until it's in. This is the default. |
+| **Escalate** | The hole is a *design flaw*, not a missing safeguard — a silent-drift source of truth, two systems writing one field, an architecture that can't support the needed fallback | Stop. Return to `/prd` (or `/memo` if the underlying problem was mis-framed). You do not bolt a safeguard onto a broken design. |
+| **Accept** | A real but acceptable residual — the cost to close it exceeds the risk, it is reversible, and the contingency is written down | Record the decision and the contingency. **Requires explicit human sign-off.** For the team, this is the call they bring to Zak — it is not theirs to make alone. |
+
+**Go-live gate:** every hole is now either **Fixed** or **Accepted-with-sign-off.** An undispositioned hole blocks go-live — no exceptions. A hole you quietly tolerate is exactly the failure this gate exists to prevent (Surface, don't sweep).
+
+Record each hole and its disposition in the Ship Review (Phase 6).
+
+---
+
+## Phase 4: PRE-FLIGHT CHECKS
+
+Confirm before flipping the switch:
+- **Idempotency** — every money/critical operation can safely run twice (re-affirm from the PRD).
+- **Reversibility** — go-live can be undone in one step (cutover, not a one-way door).
+- **Monitoring** — every automated event posts to the team's notification channel with what happened, the link, who's tagged (by their ID in that channel), and their specific next action. A notification without an owner and an action is useless. (CLAUDE.md Operational Standards.)
+- **Bulk-ops safety** — if go-live involves a bulk data change (backfill / mass update or delete of > 10 records / restore / recompute): snapshot pre-state first into `{workspace}/bulk_ops/{YYYYMMDD}_{slug}/` with a README. Don't go live without it. (Session Close Protocol #9.)
+
+---
+
+## Phase 5: GO LIVE
+
+1. **Cut over.** Prefer additive cutover — build new alongside old and swap the entry point (e.g. swap the webhook URL) rather than mutating production in place.
+2. **Smoke test in production** — fire one real transaction end-to-end and confirm the value stream completes as the PRD specified.
+3. **Confirm monitoring fired** — the live event actually posted to the team's notification channel with the right owner and action.
+4. Record the go-live result in `project_log.md`.
+
+If the smoke test fails: execute the contingency from Phase 2, do not leave it half-live, and return to `/build` Scope Escalation or `/prd` as needed.
+
+---
+
+## Phase 6: CLOSE
+
+`/ship` owns the close for builds that cross the line.
+
+### Step 1: Record the Gate-3 review
+Append to `project_log.md`:
+
+```markdown
+## Ship Review (Gate 3)
+**Blast radius:** [which conditions fired + who/what is exposed]
+**What breaks:** …
+**Who notices:** …
+**Fallback:** …
+**Contingency:** …
+**How we fix it:** …
+**Holes & dispositions:**
+- [hole] → Fixed: [safeguard built] / Escalated: [back to /prd, why] / Accepted: [residual + contingency + who signed off]
+**Go-live:** [date, cutover method, smoke-test result, monitoring confirmed]
+```
+
+### Step 2: Learning Capture
+Ask: what worked / what was painful / what to do differently. Append to `project_log.md` under Lessons Learned. If a lesson suggests a change to the mental models, checklists, or these skills — propose the specific change.
+
+### Step 3: Final Documentation
+- Remaining living-doc updates (CONTEXT.md, system_contracts.md, decision log, changelog) — **to the Documentation Standard** (`~/.claude/skills/_shared/documentation_standard.md`). If a required doc doesn't exist, run `/new-workspace` to instantiate it to standard rather than hand-rolling it.
+- `project_log.md`: Status → **Complete**, completion date, any deferred follow-ups.
+
+### Step 4: Archive
+- Move `{workspace}/_admin/prds/{project-name}/` → `{workspace}/_admin/_archive/{project-name}/`.
+- Move the memo `_admin/memos/{slug}.md` → `_admin/memos/_done/` (its build is now shipped).
+
+### Step 5: Summary
+Present a final summary, including the go-live state and any monitoring/owners now in place.
+
+---
+
+## Principles
+
+- **Working ≠ shippable.** `/build` makes it work; `/ship` makes it safe to rely on. They are different bars.
+- **The router sets the ceremony.** Internal and reversible → no ship. Real blast radius → full review, no exceptions.
+- **Silent failure is the enemy.** Every failure mode must have a noticer with an action. If nobody finds out, it isn't shippable.
+- **Every hole gets a disposition.** Fix it, escalate it, or consciously accept it with sign-off — but never just note it and ship. An undispositioned hole blocks go-live.
+- **The review is the audit surface.** A written Gate-3 review is what proves the gate was cleared honestly — for the team, that's what you actually review.
+- **Cut over, don't mutate.** Build alongside and swap the entry point, so go-live is reversible in one step.
